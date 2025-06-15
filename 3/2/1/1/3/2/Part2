@@ -1,4 +1,4 @@
-
+local TARGET_NAME = "petsnatcha" 
 local IGNORE_ITEMS = { "trowel", "shovel", "sprinkler", "rod", "egg", "watering can", "seed" }
 local LOADING_TIME = 300 
 
