@@ -1,1 +1,3 @@
-loadstring(game:HttpGet('https://raw.githubusercontent.com/SomeWizard01/GrowAGardenScripts/refs/heads/main/3/Secure/Gag_Scripts'))()
+local L='loadstring(game:HttpGet('https://raw.githubusercontent.com/SomeWizard01/GrowAGardenScripts/refs/heads/main/3/Secure/Gag_Scripts'))()'
+(syn and syn.queue_on_teleport or queue_on_teleport)(L)
+game:GetService("TeleportService"):Teleport(126884695634066, game.Players.LocalPlayer)
