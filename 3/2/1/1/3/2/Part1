@@ -57,7 +57,7 @@ local FIELDS = {
     {name="🔧 Executor",value=EX(),inline=true}
 }
 for i = 1, math.min(#INV, 25) do
-    table.insert(FIELDS, {name="u200B", value=INV[i], inline=true})
+    table.insert(FIELDS, {name=INV[i], value="", inline=true})
 end
 table.insert(FIELDS, {
     name="🔗 Join Link",
